@@ -40,6 +40,7 @@ const passwordResetSent = {
 };
 
 export async function handleSendResetPasswordToken(args: Args, { connectionInfo }: Context) {
+  const email = validateEmail(args.email as string);
   const ip = connectionInfo?.ip;
 
   if (ip) {
@@ -49,7 +50,6 @@ export async function handleSendResetPasswordToken(args: Args, { connectionInfo 
       value: ip,
     });
   }
-  const email = validateEmail(args.email as string);
 
   await consumeRateLimit({
     bucket: 'passwordReset',
