@@ -177,7 +177,7 @@ export async function handleResendEmailVerification(args: Args, { connectionInfo
     return resendVerificationResponse;
   }
 
-  const emailDoc = userDoc.emails?.find((e) => e.address === email);
+  const emailDoc = userDoc.emails?.find((e) => e.address.toLowerCase() === email);
 
   if (!emailDoc || emailDoc.verified) {
     return resendVerificationResponse;

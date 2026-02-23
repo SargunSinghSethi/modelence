@@ -8,6 +8,7 @@ import { getEmailConfig } from '@/app/emailConfig';
 import { time } from '@/time';
 import { htmlToText } from '@/utils';
 import { validateEmail, validatePassword } from './validators';
+import { consumeRateLimit } from '@/server';
 
 function resolveUrl(baseUrl: string, configuredUrl?: string): string {
   if (!configuredUrl) {
@@ -40,6 +41,21 @@ const passwordResetSent = {
 
 export async function handleSendResetPasswordToken(args: Args, { connectionInfo }: Context) {
   const email = validateEmail(args.email as string);
+  const ip = connectionInfo?.ip;
+
+  if (ip) {
+    await consumeRateLimit({
+      bucket: 'passwordReset',
+      type: 'ip',
+      value: ip,
+    });
+  }
+
+  await consumeRateLimit({
+    bucket: 'passwordReset',
+    type: 'email',
+    value: email,
+  });
 
   // Find user by email
   const userDoc = await usersCollection.findOne(
