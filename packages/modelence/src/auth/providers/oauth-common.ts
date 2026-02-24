@@ -77,12 +77,34 @@ export async function handleOAuthUserAuthentication(
     }
 
     const existingUserByEmail = await usersCollection.findOne(
-      { 'emails.address': userData.email },
+      { 'emails.address': userData.email, status: { $nin: ['deleted', 'disabled'] } },
       { collation: { locale: 'en', strength: 2 } }
     );
 
-    // TODO: check if the email is verified
     if (existingUserByEmail) {
+      const linkingMode = getAuthConfig().oauthAccountLinking ?? 'manual';
+
+      if (linkingMode === 'auto' && userData.emailVerified) {
+        // Auto-link: add the OAuth provider to the existing user's authMethods
+        await usersCollection.updateOne(
+          { _id: existingUserByEmail._id },
+          { $set: { [`authMethods.${userData.providerName}.id`]: userData.id } }
+        );
+
+        await authenticateUser(res, existingUserByEmail._id);
+
+        getAuthConfig().onAfterLogin?.({
+          provider: userData.providerName,
+          user: existingUserByEmail,
+          session,
+          connectionInfo,
+        });
+        getAuthConfig().login?.onSuccess?.(existingUserByEmail);
+
+        return;
+      }
+
+      // Manual mode (default) or unverified email — reject
       // TODO: handle case with an HTML page
       res.status(400).json({
         error: 'User with this email already exists. Please log in instead.',

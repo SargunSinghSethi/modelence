@@ -4,6 +4,7 @@ import { ObjectId } from 'mongodb';
 
 const mockUsersFindOne = jest.fn();
 const mockUsersInsertOne = jest.fn();
+const mockUsersUpdateOne = jest.fn();
 const mockCreateSession = jest.fn();
 const mockGetAuthConfig = jest.fn();
 const mockGetCallContext = jest.fn();
@@ -13,6 +14,7 @@ jest.unstable_mockModule('../db', () => ({
   usersCollection: {
     findOne: mockUsersFindOne,
     insertOne: mockUsersInsertOne,
+    updateOne: mockUsersUpdateOne,
   },
 }));
 
@@ -148,9 +150,10 @@ describe('auth/providers/oauth-common', () => {
       });
     });
 
-    test('prevents signup when email already exists', async () => {
+    test('prevents signup when email already exists (default manual mode)', async () => {
       mockUsersFindOne.mockResolvedValueOnce(null as never).mockResolvedValueOnce({
         _id: new ObjectId(),
+        status: 'active',
       } as never);
 
       await moduleExports.handleOAuthUserAuthentication(req, res, {
@@ -164,6 +167,63 @@ describe('auth/providers/oauth-common', () => {
       expect(res.json).toHaveBeenCalledWith({
         error: 'User with this email already exists. Please log in instead.',
       });
+      expect(mockUsersUpdateOne).not.toHaveBeenCalled();
+    });
+
+    test('auto-links OAuth provider when oauthAccountLinking is auto and email is verified', async () => {
+      const existingUser = { _id: new ObjectId(), handle: 'user@example.com', status: 'active' };
+      mockUsersFindOne
+        .mockResolvedValueOnce(null as never)
+        .mockResolvedValueOnce(existingUser as never);
+      mockCreateSession.mockResolvedValue({ authToken: 'tok' } as never);
+
+      mockGetAuthConfig.mockReturnValue({
+        ...authConfig,
+        oauthAccountLinking: 'auto',
+      });
+
+      await moduleExports.handleOAuthUserAuthentication(req, res, {
+        id: 'google-id',
+        email: 'user@example.com',
+        emailVerified: true,
+        providerName: 'google',
+      });
+
+      expect(mockUsersUpdateOne).toHaveBeenCalledWith(
+        { _id: existingUser._id },
+        { $set: { 'authMethods.google.id': 'google-id' } }
+      );
+      expect(mockCreateSession).toHaveBeenCalledWith(existingUser._id);
+      expect(authConfig.onAfterLogin).toHaveBeenCalledWith(
+        expect.objectContaining({ user: existingUser, provider: 'google' })
+      );
+      expect(authConfig.login.onSuccess).toHaveBeenCalledWith(existingUser);
+    });
+
+    test('rejects auto-link when oauthAccountLinking is auto but email is NOT verified', async () => {
+      const existingUser = { _id: new ObjectId(), handle: 'user@example.com', status: 'active' };
+      mockUsersFindOne
+        .mockResolvedValueOnce(null as never)
+        .mockResolvedValueOnce(existingUser as never);
+
+      mockGetAuthConfig.mockReturnValue({
+        ...authConfig,
+        oauthAccountLinking: 'auto',
+      });
+
+      await moduleExports.handleOAuthUserAuthentication(req, res, {
+        id: 'google-id',
+        email: 'user@example.com',
+        emailVerified: false,
+        providerName: 'google',
+      });
+
+      expect(res.status).toHaveBeenCalledWith(400);
+      expect(res.json).toHaveBeenCalledWith({
+        error: 'User with this email already exists. Please log in instead.',
+      });
+      expect(mockUsersUpdateOne).not.toHaveBeenCalled();
+      expect(mockCreateSession).not.toHaveBeenCalled();
     });
 
     test('creates new user when no existing records found', async () => {
