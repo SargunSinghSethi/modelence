@@ -81,25 +81,47 @@ export async function handleOAuthUserAuthentication(
   );
 
   if (existingUserByEmail) {
+    if (existingUserByEmail.status === 'disabled') {
+      res.status(400).json({
+        error: 'User account is disabled.',
+      });
+      return;
+    }
+
     const linkingMode = getAuthConfig().oauthAccountLinking ?? 'manual';
 
     if (linkingMode === 'auto' && userData.emailVerified) {
       try {
         // Auto-link: add the OAuth provider to the existing user's authMethods
-        await usersCollection.updateOne(
-          { _id: existingUserByEmail._id },
+        const updateResult = await usersCollection.updateOne(
+          { _id: existingUserByEmail._id, status: 'active' },
           { $set: { [`authMethods.${userData.providerName}.id`]: userData.id } }
         );
 
+        if (!updateResult.modifiedCount) {
+          // User was deleted/disabled between findOne and updateOne
+          res.status(400).json({
+            error: 'User with this email already exists. Please log in instead.',
+          });
+          return;
+        }
+
         await authenticateUser(res, existingUserByEmail._id);
+
+        // Re-fetch user to provide fresh data (including newly linked authMethods) to callbacks
+        const updatedUser =
+          (await usersCollection.findOne(
+            { _id: existingUserByEmail._id },
+            { readPreference: 'primary' }
+          )) ?? existingUserByEmail;
 
         getAuthConfig().onAfterLogin?.({
           provider: userData.providerName,
-          user: existingUserByEmail,
+          user: updatedUser,
           session,
           connectionInfo,
         });
-        getAuthConfig().login?.onSuccess?.(existingUserByEmail);
+        getAuthConfig().login?.onSuccess?.(updatedUser);
 
         return;
       } catch (error) {

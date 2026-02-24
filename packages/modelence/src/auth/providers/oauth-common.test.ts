@@ -170,11 +170,35 @@ describe('auth/providers/oauth-common', () => {
       expect(mockUsersUpdateOne).not.toHaveBeenCalled();
     });
 
+    test('rejects OAuth for disabled user accounts', async () => {
+      mockUsersFindOne.mockResolvedValueOnce(null as never).mockResolvedValueOnce({
+        _id: new ObjectId(),
+        status: 'disabled',
+      } as never);
+
+      await moduleExports.handleOAuthUserAuthentication(req, res, {
+        id: 'google-id',
+        email: 'user@example.com',
+        emailVerified: true,
+        providerName: 'google',
+      });
+
+      expect(res.status).toHaveBeenCalledWith(400);
+      expect(res.json).toHaveBeenCalledWith({
+        error: 'User account is disabled.',
+      });
+      expect(mockUsersUpdateOne).not.toHaveBeenCalled();
+      expect(mockCreateSession).not.toHaveBeenCalled();
+    });
+
     test('auto-links OAuth provider when oauthAccountLinking is auto and email is verified', async () => {
       const existingUser = { _id: new ObjectId(), handle: 'user@example.com', status: 'active' };
+      const updatedUser = { ...existingUser, authMethods: { google: { id: 'google-id' } } };
       mockUsersFindOne
         .mockResolvedValueOnce(null as never)
-        .mockResolvedValueOnce(existingUser as never);
+        .mockResolvedValueOnce(existingUser as never)
+        .mockResolvedValueOnce(updatedUser as never);
+      mockUsersUpdateOne.mockResolvedValue({ modifiedCount: 1 } as never);
       mockCreateSession.mockResolvedValue({ authToken: 'tok' } as never);
 
       mockGetAuthConfig.mockReturnValue({
@@ -190,14 +214,14 @@ describe('auth/providers/oauth-common', () => {
       });
 
       expect(mockUsersUpdateOne).toHaveBeenCalledWith(
-        { _id: existingUser._id },
+        { _id: existingUser._id, status: 'active' },
         { $set: { 'authMethods.google.id': 'google-id' } }
       );
       expect(mockCreateSession).toHaveBeenCalledWith(existingUser._id);
       expect(authConfig.onAfterLogin).toHaveBeenCalledWith(
-        expect.objectContaining({ user: existingUser, provider: 'google' })
+        expect.objectContaining({ user: updatedUser, provider: 'google' })
       );
-      expect(authConfig.login.onSuccess).toHaveBeenCalledWith(existingUser);
+      expect(authConfig.login.onSuccess).toHaveBeenCalledWith(updatedUser);
     });
 
     test('rejects auto-link when oauthAccountLinking is auto but email is NOT verified', async () => {
