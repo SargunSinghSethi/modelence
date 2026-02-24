@@ -132,7 +132,12 @@ export async function handleOAuthUserAuthentication(
             [`authMethods.${userData.providerName}.id`]: userData.id,
           });
 
-          if (providerLinkedUser && providerLinkedUser._id.equals(existingUserByEmail._id)) {
+          if (
+            providerLinkedUser &&
+            providerLinkedUser._id.equals(existingUserByEmail._id) &&
+            providerLinkedUser.status !== 'disabled' &&
+            providerLinkedUser.status !== 'deleted'
+          ) {
             autoLinkSuccessful = true;
           }
         }

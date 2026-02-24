@@ -350,6 +350,36 @@ describe('auth/providers/oauth-common', () => {
       expect(mockCreateSession).not.toHaveBeenCalled();
     });
 
+    test('rejects auto-link if concurrent provider-linked user is same ID but now deleted', async () => {
+      const existingUser = { _id: new ObjectId(), handle: 'user@example.com', status: 'active' };
+      const deletedLinkedUser = { ...existingUser, status: 'deleted' as const };
+      mockUsersFindOne
+        .mockResolvedValueOnce(null as never) // provider ID lookup
+        .mockResolvedValueOnce(existingUser as never) // email lookup
+        .mockResolvedValueOnce(deletedLinkedUser as never); // concurrent check lookup
+
+      mockUsersUpdateOne.mockResolvedValue({ matchedCount: 0 } as never);
+
+      mockGetAuthConfig.mockReturnValue({
+        ...authConfig,
+        oauthAccountLinking: 'auto',
+      });
+
+      await moduleExports.handleOAuthUserAuthentication(req, res, {
+        id: 'google-id',
+        email: 'user@example.com',
+        emailVerified: true,
+        providerName: 'google',
+      });
+
+      expect(mockUsersUpdateOne).toHaveBeenCalled();
+      expect(res.status).toHaveBeenCalledWith(400);
+      expect(res.json).toHaveBeenCalledWith({
+        error: 'User with this email already exists. Please log in instead.',
+      });
+      expect(mockCreateSession).not.toHaveBeenCalled();
+    });
+
     test('rejects auto-link when oauthAccountLinking is auto but email is NOT verified', async () => {
       const existingUser = { _id: new ObjectId(), handle: 'user@example.com', status: 'active' };
       mockUsersFindOne
