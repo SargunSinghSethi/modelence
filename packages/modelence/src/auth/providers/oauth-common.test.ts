@@ -153,6 +153,25 @@ describe('auth/providers/oauth-common', () => {
       expect(mockCreateSession).not.toHaveBeenCalled();
     });
 
+    test('rejects login for existing linked user if account is deleted', async () => {
+      const deletedUser = { _id: new ObjectId(), handle: 'demo', status: 'deleted' };
+      mockUsersFindOne.mockResolvedValueOnce(deletedUser as never);
+      const userData = {
+        id: 'provider-id',
+        email: 'user@example.com',
+        emailVerified: true,
+        providerName: 'google' as const,
+      };
+
+      await moduleExports.handleOAuthUserAuthentication(req, res, userData);
+
+      expect(res.status).toHaveBeenCalledWith(400);
+      expect(res.json).toHaveBeenCalledWith({
+        error: 'User account is disabled.',
+      });
+      expect(mockCreateSession).not.toHaveBeenCalled();
+    });
+
     test('returns error when provider does not supply email', async () => {
       mockUsersFindOne.mockResolvedValueOnce(null as never);
 
@@ -167,6 +186,30 @@ describe('auth/providers/oauth-common', () => {
       expect(res.json).toHaveBeenCalledWith({
         error: 'Email address is required for google authentication.',
       });
+    });
+
+    test('email lookup errors trigger signup error callbacks', async () => {
+      const lookupError = new Error('email lookup failed');
+      mockUsersFindOne
+        .mockResolvedValueOnce(null as never)
+        .mockRejectedValueOnce(lookupError as never);
+
+      await expect(
+        moduleExports.handleOAuthUserAuthentication(req, res, {
+          id: 'provider-id',
+          email: 'user@example.com',
+          emailVerified: true,
+          providerName: 'google',
+        })
+      ).rejects.toThrow('email lookup failed');
+
+      expect(authConfig.onSignupError).toHaveBeenCalledWith(
+        expect.objectContaining({ error: lookupError, provider: 'google' })
+      );
+      expect(authConfig.signup.onError).toHaveBeenCalledWith(lookupError);
+      expect(authConfig.onLoginError).not.toHaveBeenCalled();
+      expect(authConfig.login.onError).not.toHaveBeenCalled();
+      expect(mockUsersInsertOne).not.toHaveBeenCalled();
     });
 
     test('prevents signup when email already exists (default manual mode)', async () => {
