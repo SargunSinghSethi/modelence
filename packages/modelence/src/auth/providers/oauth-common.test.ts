@@ -198,7 +198,7 @@ describe('auth/providers/oauth-common', () => {
         .mockResolvedValueOnce(null as never)
         .mockResolvedValueOnce(existingUser as never)
         .mockResolvedValueOnce(updatedUser as never);
-      mockUsersUpdateOne.mockResolvedValue({ modifiedCount: 1 } as never);
+      mockUsersUpdateOne.mockResolvedValue({ matchedCount: 1 } as never);
       mockCreateSession.mockResolvedValue({ authToken: 'tok' } as never);
 
       mockGetAuthConfig.mockReturnValue({

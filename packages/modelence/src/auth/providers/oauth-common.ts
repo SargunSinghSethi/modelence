@@ -98,7 +98,7 @@ export async function handleOAuthUserAuthentication(
           { $set: { [`authMethods.${userData.providerName}.id`]: userData.id } }
         );
 
-        if (!updateResult.modifiedCount) {
+        if (!updateResult.matchedCount) {
           // User was deleted/disabled between findOne and updateOne
           res.status(400).json({
             error: 'User with this email already exists. Please log in instead.',
