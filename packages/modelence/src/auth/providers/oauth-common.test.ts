@@ -63,6 +63,15 @@ describe('auth/providers/oauth-common', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    mockUsersFindOne.mockReset();
+    mockUsersInsertOne.mockReset();
+    mockUsersUpdateOne.mockReset();
+    mockCreateSession.mockReset();
+    mockGetAuthConfig.mockReset();
+    mockGetCallContext.mockReset();
+    mockGetConfig.mockReset();
+
+    mockCreateSession.mockResolvedValue({ authToken: 'tok' } as never);
     mockGetAuthConfig.mockReturnValue(authConfig);
     mockGetCallContext.mockResolvedValue({
       session: { authToken: 'token' },
@@ -254,7 +263,12 @@ describe('auth/providers/oauth-common', () => {
     });
 
     test('auto-links OAuth provider when oauthAccountLinking is auto and email is verified', async () => {
-      const existingUser = { _id: new ObjectId(), handle: 'user@example.com', status: 'active' };
+      const existingUser = {
+        _id: new ObjectId(),
+        handle: 'user@example.com',
+        status: 'active',
+        emails: [{ address: 'user@example.com', verified: true }],
+      };
       const updatedUser = { ...existingUser, authMethods: { google: { id: 'google-id' } } };
       mockUsersFindOne
         .mockResolvedValueOnce(null as never)
@@ -291,7 +305,12 @@ describe('auth/providers/oauth-common', () => {
     });
 
     test('proceeds to login if concurrent request already linked the same provider ID', async () => {
-      const existingUser = { _id: new ObjectId(), handle: 'user@example.com', status: 'active' };
+      const existingUser = {
+        _id: new ObjectId(),
+        handle: 'user@example.com',
+        status: 'active',
+        emails: [{ address: 'user@example.com', verified: true }],
+      };
       const updatedUser = { ...existingUser, authMethods: { google: { id: 'google-id' } } };
       mockUsersFindOne
         .mockResolvedValueOnce(null as never) // provider ID lookup
@@ -322,7 +341,12 @@ describe('auth/providers/oauth-common', () => {
     });
 
     test('rejects auto-link if update fails completely (e.g., user deleted/disabled or different provider ID linked concurrently)', async () => {
-      const existingUser = { _id: new ObjectId(), handle: 'user@example.com', status: 'active' };
+      const existingUser = {
+        _id: new ObjectId(),
+        handle: 'user@example.com',
+        status: 'active',
+        emails: [{ address: 'user@example.com', verified: true }],
+      };
       mockUsersFindOne
         .mockResolvedValueOnce(null as never) // provider ID lookup
         .mockResolvedValueOnce(existingUser as never) // email lookup
@@ -351,7 +375,12 @@ describe('auth/providers/oauth-common', () => {
     });
 
     test('rejects auto-link if concurrent provider-linked user is same ID but now deleted', async () => {
-      const existingUser = { _id: new ObjectId(), handle: 'user@example.com', status: 'active' };
+      const existingUser = {
+        _id: new ObjectId(),
+        handle: 'user@example.com',
+        status: 'active',
+        emails: [{ address: 'user@example.com', verified: true }],
+      };
       const deletedLinkedUser = { ...existingUser, status: 'deleted' as const };
       mockUsersFindOne
         .mockResolvedValueOnce(null as never) // provider ID lookup
@@ -381,7 +410,12 @@ describe('auth/providers/oauth-common', () => {
     });
 
     test('rejects auto-link when oauthAccountLinking is auto but email is NOT verified', async () => {
-      const existingUser = { _id: new ObjectId(), handle: 'user@example.com', status: 'active' };
+      const existingUser = {
+        _id: new ObjectId(),
+        handle: 'user@example.com',
+        status: 'active',
+        emails: [{ address: 'user@example.com', verified: true }],
+      };
       mockUsersFindOne
         .mockResolvedValueOnce(null as never)
         .mockResolvedValueOnce(existingUser as never);
@@ -406,8 +440,44 @@ describe('auth/providers/oauth-common', () => {
       expect(mockCreateSession).not.toHaveBeenCalled();
     });
 
+    test('rejects auto-link when provider email is verified but local email is unverified', async () => {
+      const existingUser = {
+        _id: new ObjectId(),
+        handle: 'user@example.com',
+        status: 'active',
+        emails: [{ address: 'user@example.com', verified: false }],
+      };
+      mockUsersFindOne
+        .mockResolvedValueOnce(null as never) // provider ID lookup
+        .mockResolvedValueOnce(existingUser as never); // email lookup
+
+      mockGetAuthConfig.mockReturnValue({
+        ...authConfig,
+        oauthAccountLinking: 'auto',
+      });
+
+      await moduleExports.handleOAuthUserAuthentication(req, res, {
+        id: 'google-id',
+        email: 'user@example.com',
+        emailVerified: true,
+        providerName: 'google',
+      });
+
+      expect(res.status).toHaveBeenCalledWith(400);
+      expect(res.json).toHaveBeenCalledWith({
+        error: 'User with this email already exists. Please log in instead.',
+      });
+      expect(mockUsersUpdateOne).not.toHaveBeenCalled();
+      expect(mockCreateSession).not.toHaveBeenCalled();
+    });
+
     test('auto-link errors trigger login error callbacks, not signup', async () => {
-      const existingUser = { _id: new ObjectId(), handle: 'user@example.com', status: 'active' };
+      const existingUser = {
+        _id: new ObjectId(),
+        handle: 'user@example.com',
+        status: 'active',
+        emails: [{ address: 'user@example.com', verified: true }],
+      };
       mockUsersFindOne
         .mockResolvedValueOnce(null as never)
         .mockResolvedValueOnce(existingUser as never);

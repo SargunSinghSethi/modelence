@@ -112,8 +112,19 @@ export async function handleOAuthUserAuthentication(
     }
 
     const linkingMode = getAuthConfig().oauthAccountLinking ?? 'manual';
+    const matchedEmail = existingUserByEmail.emails?.find(
+      (emailDoc) => emailDoc.address.toLowerCase() === userData.email.toLowerCase()
+    );
 
     if (linkingMode === 'auto' && userData.emailVerified) {
+      // Prevent pre-registration takeover by requiring local ownership verification too.
+      if (!matchedEmail?.verified) {
+        res.status(400).json({
+          error: 'User with this email already exists. Please log in instead.',
+        });
+        return;
+      }
+
       try {
         const updateResult = await usersCollection.updateOne(
           {
