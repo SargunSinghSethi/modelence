@@ -157,7 +157,7 @@ describe('auth/providers/oauth-common', () => {
 
       expect(res.status).toHaveBeenCalledWith(400);
       expect(res.json).toHaveBeenCalledWith({
-        error: 'User account is disabled.',
+        error: 'User account is not active.',
       });
       expect(mockCreateSession).not.toHaveBeenCalled();
     });
@@ -176,7 +176,7 @@ describe('auth/providers/oauth-common', () => {
 
       expect(res.status).toHaveBeenCalledWith(400);
       expect(res.json).toHaveBeenCalledWith({
-        error: 'User account is disabled.',
+        error: 'User account is not active.',
       });
       expect(mockCreateSession).not.toHaveBeenCalled();
     });
@@ -256,7 +256,7 @@ describe('auth/providers/oauth-common', () => {
 
       expect(res.status).toHaveBeenCalledWith(400);
       expect(res.json).toHaveBeenCalledWith({
-        error: 'User account is disabled.',
+        error: 'User account is not active.',
       });
       expect(mockUsersUpdateOne).not.toHaveBeenCalled();
       expect(mockCreateSession).not.toHaveBeenCalled();

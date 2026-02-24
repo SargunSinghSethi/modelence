@@ -44,7 +44,7 @@ export async function handleOAuthUserAuthentication(
     if (existingUser) {
       if (existingUser.status === 'disabled' || existingUser.status === 'deleted') {
         res.status(400).json({
-          error: 'User account is disabled.',
+          error: 'User account is not active.',
         });
         return;
       }
@@ -82,31 +82,31 @@ export async function handleOAuthUserAuthentication(
     return;
   }
 
-  const existingUserByEmail = await (async () => {
-    try {
-      return await usersCollection.findOne(
-        { 'emails.address': userData.email, status: { $ne: 'deleted' } },
-        { collation: { locale: 'en', strength: 2 } }
-      );
-    } catch (error) {
-      if (error instanceof Error) {
-        getAuthConfig().onSignupError?.({
-          provider: userData.providerName,
-          error,
-          session,
-          connectionInfo,
-        });
+  let existingUserByEmail;
 
-        getAuthConfig().signup?.onError?.(error);
-      }
-      throw error;
+  try {
+    existingUserByEmail = await usersCollection.findOne(
+      { 'emails.address': userData.email, status: { $ne: 'deleted' } },
+      { collation: { locale: 'en', strength: 2 } }
+    );
+  } catch (error) {
+    if (error instanceof Error) {
+      getAuthConfig().onSignupError?.({
+        provider: userData.providerName,
+        error,
+        session,
+        connectionInfo,
+      });
+
+      getAuthConfig().signup?.onError?.(error);
     }
-  })();
+    throw error;
+  }
 
   if (existingUserByEmail) {
     if (existingUserByEmail.status === 'disabled') {
       res.status(400).json({
-        error: 'User account is disabled.',
+        error: 'User account is not active.',
       });
       return;
     }
