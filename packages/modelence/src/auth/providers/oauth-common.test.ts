@@ -226,6 +226,39 @@ describe('auth/providers/oauth-common', () => {
       expect(mockCreateSession).not.toHaveBeenCalled();
     });
 
+    test('auto-link errors trigger login error callbacks, not signup', async () => {
+      const existingUser = { _id: new ObjectId(), handle: 'user@example.com', status: 'active' };
+      mockUsersFindOne
+        .mockResolvedValueOnce(null as never)
+        .mockResolvedValueOnce(existingUser as never);
+      const updateError = new Error('updateOne failed');
+      mockUsersUpdateOne.mockRejectedValueOnce(updateError as never);
+
+      mockGetAuthConfig.mockReturnValue({
+        ...authConfig,
+        oauthAccountLinking: 'auto',
+      });
+
+      await expect(
+        moduleExports.handleOAuthUserAuthentication(req, res, {
+          id: 'google-id',
+          email: 'user@example.com',
+          emailVerified: true,
+          providerName: 'google',
+        })
+      ).rejects.toThrow('updateOne failed');
+
+      // Should trigger login error callbacks
+      expect(authConfig.login.onError).toHaveBeenCalledWith(updateError);
+      expect(authConfig.onLoginError).toHaveBeenCalledWith(
+        expect.objectContaining({ error: updateError, provider: 'google' })
+      );
+
+      // Should NOT trigger signup error callbacks
+      expect(authConfig.signup.onError).not.toHaveBeenCalled();
+      expect(authConfig.onSignupError).not.toHaveBeenCalled();
+    });
+
     test('creates new user when no existing records found', async () => {
       mockUsersFindOne.mockResolvedValueOnce(null as never).mockResolvedValueOnce(null as never);
       const insertedId = new ObjectId();

@@ -68,23 +68,23 @@ export async function handleOAuthUserAuthentication(
     throw error;
   }
 
-  try {
-    if (!userData.email) {
-      res.status(400).json({
-        error: `Email address is required for ${userData.providerName} authentication.`,
-      });
-      return;
-    }
+  if (!userData.email) {
+    res.status(400).json({
+      error: `Email address is required for ${userData.providerName} authentication.`,
+    });
+    return;
+  }
 
-    const existingUserByEmail = await usersCollection.findOne(
-      { 'emails.address': userData.email, status: { $nin: ['deleted', 'disabled'] } },
-      { collation: { locale: 'en', strength: 2 } }
-    );
+  const existingUserByEmail = await usersCollection.findOne(
+    { 'emails.address': userData.email, status: { $ne: 'deleted' } },
+    { collation: { locale: 'en', strength: 2 } }
+  );
 
-    if (existingUserByEmail) {
-      const linkingMode = getAuthConfig().oauthAccountLinking ?? 'manual';
+  if (existingUserByEmail) {
+    const linkingMode = getAuthConfig().oauthAccountLinking ?? 'manual';
 
-      if (linkingMode === 'auto' && userData.emailVerified) {
+    if (linkingMode === 'auto' && userData.emailVerified) {
+      try {
         // Auto-link: add the OAuth provider to the existing user's authMethods
         await usersCollection.updateOne(
           { _id: existingUserByEmail._id },
@@ -102,17 +102,31 @@ export async function handleOAuthUserAuthentication(
         getAuthConfig().login?.onSuccess?.(existingUserByEmail);
 
         return;
-      }
+      } catch (error) {
+        if (error instanceof Error) {
+          getAuthConfig().login?.onError?.(error);
 
-      // Manual mode (default) or unverified email — reject
-      // TODO: handle case with an HTML page
-      res.status(400).json({
-        error: 'User with this email already exists. Please log in instead.',
-      });
-      return;
+          getAuthConfig().onLoginError?.({
+            provider: userData.providerName,
+            error,
+            session,
+            connectionInfo,
+          });
+        }
+        throw error;
+      }
     }
 
-    // If the user does not exist, create a new user
+    // Manual mode (default) or unverified email — reject
+    // TODO: handle case with an HTML page
+    res.status(400).json({
+      error: 'User with this email already exists. Please log in instead.',
+    });
+    return;
+  }
+
+  // If the user does not exist, create a new user
+  try {
     const newUser = await usersCollection.insertOne({
       handle: userData.email,
       status: 'active',
