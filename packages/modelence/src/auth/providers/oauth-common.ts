@@ -42,6 +42,13 @@ export async function handleOAuthUserAuthentication(
 
   try {
     if (existingUser) {
+      if (existingUser.status === 'disabled') {
+        res.status(400).json({
+          error: 'User account is disabled.',
+        });
+        return;
+      }
+
       await authenticateUser(res, existingUser._id);
 
       getAuthConfig().onAfterLogin?.({
@@ -101,8 +108,21 @@ export async function handleOAuthUserAuthentication(
           { $set: { [`authMethods.${userData.providerName}.id`]: userData.id } }
         );
 
-        if (!updateResult.matchedCount) {
-          // User was deleted/disabled between findOne and updateOne
+        let autoLinkSuccessful = updateResult.matchedCount > 0;
+
+        if (!autoLinkSuccessful) {
+          // Check if provider is already linked now (race case)
+          const providerLinkedUser = await usersCollection.findOne({
+            [`authMethods.${userData.providerName}.id`]: userData.id,
+          });
+
+          if (providerLinkedUser && providerLinkedUser._id.equals(existingUserByEmail._id)) {
+            autoLinkSuccessful = true;
+          }
+        }
+
+        if (!autoLinkSuccessful) {
+          // User was deleted/disabled between findOne and updateOne, or linked to a *different* ID
           res.status(400).json({
             error: 'User with this email already exists. Please log in instead.',
           });

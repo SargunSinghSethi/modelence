@@ -114,7 +114,7 @@ describe('auth/providers/oauth-common', () => {
 
   describe('handleOAuthUserAuthentication', () => {
     test('logs in existing user via provider id', async () => {
-      const existingUser = { _id: new ObjectId(), handle: 'demo' };
+      const existingUser = { _id: new ObjectId(), handle: 'demo', status: 'active' };
       mockUsersFindOne.mockResolvedValueOnce(existingUser as never);
       const userData = {
         id: 'provider-id',
@@ -132,6 +132,25 @@ describe('auth/providers/oauth-common', () => {
         expect.objectContaining({ user: existingUser })
       );
       expect(authConfig.login.onSuccess).toHaveBeenCalledWith(existingUser);
+    });
+
+    test('rejects login for existing linked user if account is disabled', async () => {
+      const disabledUser = { _id: new ObjectId(), handle: 'demo', status: 'disabled' };
+      mockUsersFindOne.mockResolvedValueOnce(disabledUser as never);
+      const userData = {
+        id: 'provider-id',
+        email: 'user@example.com',
+        emailVerified: true,
+        providerName: 'google' as const,
+      };
+
+      await moduleExports.handleOAuthUserAuthentication(req, res, userData);
+
+      expect(res.status).toHaveBeenCalledWith(400);
+      expect(res.json).toHaveBeenCalledWith({
+        error: 'User account is disabled.',
+      });
+      expect(mockCreateSession).not.toHaveBeenCalled();
     });
 
     test('returns error when provider does not supply email', async () => {
@@ -226,6 +245,66 @@ describe('auth/providers/oauth-common', () => {
         expect.objectContaining({ user: updatedUser, provider: 'google' })
       );
       expect(authConfig.login.onSuccess).toHaveBeenCalledWith(updatedUser);
+    });
+
+    test('proceeds to login if concurrent request already linked the same provider ID', async () => {
+      const existingUser = { _id: new ObjectId(), handle: 'user@example.com', status: 'active' };
+      const updatedUser = { ...existingUser, authMethods: { google: { id: 'google-id' } } };
+      mockUsersFindOne
+        .mockResolvedValueOnce(null as never) // provider ID lookup
+        .mockResolvedValueOnce(existingUser as never) // email lookup
+        .mockResolvedValueOnce(updatedUser as never) // concurrent check lookup
+        .mockResolvedValueOnce(updatedUser as never); // final re-fetch for callbacks
+      mockUsersUpdateOne.mockResolvedValue({ matchedCount: 0 } as never); // update fails
+      mockCreateSession.mockResolvedValue({ authToken: 'tok' } as never);
+
+      mockGetAuthConfig.mockReturnValue({
+        ...authConfig,
+        oauthAccountLinking: 'auto',
+      });
+
+      await moduleExports.handleOAuthUserAuthentication(req, res, {
+        id: 'google-id',
+        email: 'user@example.com',
+        emailVerified: true,
+        providerName: 'google',
+      });
+
+      expect(mockUsersUpdateOne).toHaveBeenCalled();
+      expect(mockCreateSession).toHaveBeenCalledWith(existingUser._id);
+      expect(authConfig.onAfterLogin).toHaveBeenCalledWith(
+        expect.objectContaining({ user: updatedUser, provider: 'google' })
+      );
+      expect(authConfig.login.onSuccess).toHaveBeenCalledWith(updatedUser);
+    });
+
+    test('rejects auto-link if update fails completely (e.g., user deleted/disabled or different provider ID linked concurrently)', async () => {
+      const existingUser = { _id: new ObjectId(), handle: 'user@example.com', status: 'active' };
+      mockUsersFindOne
+        .mockResolvedValueOnce(null as never) // provider ID lookup
+        .mockResolvedValueOnce(existingUser as never) // email lookup
+        .mockResolvedValueOnce(null as never); // concurrent check lookup: not linked!
+
+      mockUsersUpdateOne.mockResolvedValue({ matchedCount: 0 } as never);
+
+      mockGetAuthConfig.mockReturnValue({
+        ...authConfig,
+        oauthAccountLinking: 'auto',
+      });
+
+      await moduleExports.handleOAuthUserAuthentication(req, res, {
+        id: 'google-id',
+        email: 'user@example.com',
+        emailVerified: true,
+        providerName: 'google',
+      });
+
+      expect(mockUsersUpdateOne).toHaveBeenCalled();
+      expect(res.status).toHaveBeenCalledWith(400);
+      expect(res.json).toHaveBeenCalledWith({
+        error: 'User with this email already exists. Please log in instead.',
+      });
+      expect(mockCreateSession).not.toHaveBeenCalled();
     });
 
     test('rejects auto-link when oauthAccountLinking is auto but email is NOT verified', async () => {
