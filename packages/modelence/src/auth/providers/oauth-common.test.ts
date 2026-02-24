@@ -214,7 +214,7 @@ describe('auth/providers/oauth-common', () => {
       });
 
       expect(mockUsersUpdateOne).toHaveBeenCalledWith(
-        { _id: existingUser._id, status: 'active' },
+        { _id: existingUser._id, status: { $nin: ['deleted', 'disabled'] } },
         { $set: { 'authMethods.google.id': 'google-id' } }
       );
       expect(mockCreateSession).toHaveBeenCalledWith(existingUser._id);

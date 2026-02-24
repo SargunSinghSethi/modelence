@@ -94,7 +94,7 @@ export async function handleOAuthUserAuthentication(
       try {
         // Auto-link: add the OAuth provider to the existing user's authMethods
         const updateResult = await usersCollection.updateOne(
-          { _id: existingUserByEmail._id, status: 'active' },
+          { _id: existingUserByEmail._id, status: { $nin: ['deleted', 'disabled'] } },
           { $set: { [`authMethods.${userData.providerName}.id`]: userData.id } }
         );
 
