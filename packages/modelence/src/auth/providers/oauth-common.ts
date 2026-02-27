@@ -119,12 +119,16 @@ async function handleExistingEmailLogin(
 
       await authenticateUser(res, existingUserByEmail._id);
 
-      // Re-fetch user to provide fresh data (including newly linked authMethods) to callbacks
-      const updatedUser =
-        (await usersCollection.findOne(
-          { _id: existingUserByEmail._id },
-          { readPreference: 'primary' }
-        )) ?? existingUserByEmail;
+      // Construct updated user in-memory to provide fresh data to callbacks
+      const updatedUser: User = {
+        ...existingUserByEmail,
+        authMethods: {
+          ...existingUserByEmail.authMethods,
+          [userData.providerName]: {
+            id: userData.id,
+          },
+        },
+      };
 
       getAuthConfig().onAfterLogin?.({
         provider: userData.providerName,

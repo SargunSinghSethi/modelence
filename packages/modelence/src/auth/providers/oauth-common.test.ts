@@ -277,8 +277,7 @@ describe('auth/providers/oauth-common', () => {
         const updatedUser = { ...existingUser, authMethods: { google: { id: 'google-id' } } };
         mockUsersFindOne
           .mockResolvedValueOnce(null as never)
-          .mockResolvedValueOnce(existingUser as never)
-          .mockResolvedValueOnce(updatedUser as never);
+          .mockResolvedValueOnce(existingUser as never);
         mockUsersUpdateOne.mockResolvedValue({ matchedCount: 1 } as never);
         mockCreateSession.mockResolvedValue({ authToken: 'tok' } as never);
 
@@ -322,8 +321,7 @@ describe('auth/providers/oauth-common', () => {
         const updatedUser = { ...existingUser, authMethods: { google: { id: 'google-id' } } };
         mockUsersFindOne
           .mockResolvedValueOnce(null as never) // provider ID lookup
-          .mockResolvedValueOnce(existingUser as never) // email lookup
-          .mockResolvedValueOnce(updatedUser as never); // final re-fetch for callbacks
+          .mockResolvedValueOnce(existingUser as never); // email lookup
         mockUsersUpdateOne.mockResolvedValue({ matchedCount: 1 } as never); // update succeeds via $or
         mockCreateSession.mockResolvedValue({ authToken: 'tok' } as never);
 
