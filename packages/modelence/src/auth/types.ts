@@ -32,8 +32,6 @@ export interface User extends Document {
   };
 }
 
-// export type User = Document;
-
 export type UserInfo = {
   id: string;
   handle: string;

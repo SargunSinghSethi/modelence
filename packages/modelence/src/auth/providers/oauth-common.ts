@@ -73,7 +73,7 @@ async function handleExistingEmailLogin(
   session: Session | null,
   connectionInfo: ConnectionInfo
 ) {
-  if (existingUserByEmail.status === 'disabled') {
+  if (existingUserByEmail.status === 'disabled' || existingUserByEmail.status === 'deleted') {
     res.status(400).json({
       error: 'User account is not active.',
     });
